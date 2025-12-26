@@ -1,12 +1,11 @@
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/services/supabase';
 import { router } from 'expo-router';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   FlatList,
-  StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
@@ -20,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { styles } from '@/styles/chat.styles';
 
 // Enable LayoutAnimation on Android
 if (
@@ -57,6 +57,8 @@ export default function ChatScreen() {
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutRef = useRef<any>(null);
+  const channelStatusRef = useRef<string>('CLOSED');
+  const lastTypingEvent = useRef<number>(0);
 
   useEffect(() => {
     // Get current user
@@ -119,7 +121,10 @@ export default function ChatScreen() {
 
   const handleInputChange = (text: string) => {
     setInputText(text);
-    if (text.length > 0 && channelRef.current && userEmail) {
+    const now = Date.now();
+    // Throttle: Only send if > 2000ms since last event
+    if (text.length > 0 && channelRef.current && userEmail && (now - lastTypingEvent.current > 2000)) {
+      lastTypingEvent.current = now;
       channelRef.current.send({
         type: 'broadcast',
         event: 'typing',
@@ -162,45 +167,16 @@ export default function ChatScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: Message }) => {
-    // Check match by ID (preferred) or fallback to sender email match for legacy messages
-    const isMe = (currentUserId && item.user_id === currentUserId) || (userEmail && item.sender === userEmail);
-    const senderName = item.sender.includes('@') ? item.sender.split('@')[0] : item.sender;
-
-    return (
-      <View
-        style={[
-          styles.messageRow,
-          isMe ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' },
-        ]}>
-        {!isMe && (
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatarPlaceholder} />
-          </View>
-        )}
-        <View style={styles.messageContainer}>
-          {!isMe && (
-            <Text style={styles.senderName}>{senderName}</Text>
-          )}
-          <View
-            style={[
-              styles.messageBubble,
-              isMe
-                ? { backgroundColor: igBlue, borderBottomRightRadius: 4 }
-                : { backgroundColor: igGray, borderBottomLeftRadius: 4 },
-            ]}>
-            <Text
-              style={[
-                styles.messageText,
-                isMe ? { color: '#fff' } : { color: igText },
-              ]}>
-              {item.text}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+  const renderItem = useCallback(({ item }: { item: Message }) => (
+    <MessageItem
+      item={item}
+      currentUserId={currentUserId}
+      userEmail={userEmail}
+      igBlue={igBlue}
+      igGray={igGray}
+      igText={igText}
+    />
+  ), [currentUserId, userEmail, igBlue, igGray, igText]);
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000' : '#fff', paddingTop: insets.top }]}>
@@ -260,116 +236,50 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 0.5,
-    flexDirection: 'row',
-  },
-  headerTitleContainer: { // New container to align text and badge
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  logoutButton: {
-    position: 'absolute',
-    left: 16,
-    padding: 8,
-    zIndex: 10, // Ensure clickable
-  },
-  onlineBadge: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#34C759', // Green
-    marginLeft: 6,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  keyboardContainer: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 2,
-  },
-  avatarContainer: {
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  avatarPlaceholder: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ccc',
-  },
-  messageBubble: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 22,
-    // maxWidth constraint moved to messageContainer
-  },
-  messageContainer: {
-    maxWidth: '75%',
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  inputContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopWidth: 0,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 24,
-    paddingHorizontal: 12,
-    height: 48,
-  },
-  cameraIcon: {
-    padding: 4,
-    borderRadius: 20,
-    backgroundColor: '#3797EF20', // Light blue bg
-    marginRight: 8,
-  },
-  senderName: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
-    marginLeft: 4,
-  },
-  typingIndicator: {
-    marginLeft: 16,
-    marginBottom: 8,
-    fontSize: 12,
-    color: '#888',
-    fontStyle: 'italic',
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    height: '100%',
-  },
-  sendButton: {
-    paddingLeft: 12,
-  },
+const MessageItem = React.memo(({ item, currentUserId, userEmail, igBlue, igGray, igText }: {
+  item: Message;
+  currentUserId: string | null;
+  userEmail: string | null;
+  igBlue: string;
+  igGray: string;
+  igText: string;
+}) => {
+  const isMe = (currentUserId && item.user_id === currentUserId) || (userEmail && item.sender === userEmail);
+  const senderName = item.sender.includes('@') ? item.sender.split('@')[0] : item.sender;
+
+  return (
+    <View
+      style={[
+        styles.messageRow,
+        isMe ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' },
+      ]}>
+      {!isMe && (
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatarPlaceholder} />
+        </View>
+      )}
+      <View style={styles.messageContainer}>
+        {!isMe && (
+          <Text style={styles.senderName}>{senderName}</Text>
+        )}
+        <View
+          style={[
+            styles.messageBubble,
+            isMe
+              ? { backgroundColor: igBlue, borderBottomRightRadius: 4 }
+              : { backgroundColor: igGray, borderBottomLeftRadius: 4 },
+          ]}>
+          <Text
+            style={[
+              styles.messageText,
+              isMe ? { color: '#fff' } : { color: igText },
+            ]}>
+            {item.text}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
 });
+
+MessageItem.displayName = 'MessageItem';

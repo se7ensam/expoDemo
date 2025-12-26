@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/services/supabase';
 
 export const unstable_settings = {
   anchor: '(tabs)',
